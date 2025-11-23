@@ -5,5 +5,7 @@ public class ConversorMoeda {
     public ConversorMoeda(double taxaCambio) {
         this.taxaCambio = taxaCambio;
     }
-
+    public double converter(double valor) {
+        return valor * taxaCambio;
+    }
 }

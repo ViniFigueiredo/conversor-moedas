@@ -1,3 +1,3 @@
-public class RabbitMQProducer {
+/*public class RabbitMQProducer {
     
-}
+}*/
