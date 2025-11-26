@@ -1,14 +1,16 @@
+# cliente/app.py
+import os
 import streamlit as st
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from decimal import Decimal, InvalidOperation
 
-#url do springboot
-BASE_URL = "http://api:8080/convert"
+USD_URL = os.getenv("USD_URL", "http://usd-service:8081/convert/usd")
+EUR_URL = os.getenv("EUR_URL", "http://eur-service:8082/convert/eur")
 
 st.set_page_config(page_title="Cliente Conversor", layout="centered")
-st.title("Cliente — duas threads: Dólar para Real e Euro para Real")
+st.title("Cliente — Dólar e Euro para Real")
 
-amount = st.text_input("Valor (ex.: 1.234,56 ou 1234.56)", "1.000,00")
+amount = st.text_input("Valor (ex.: 1.234,56 ou 1234.56)", "1")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -16,38 +18,61 @@ with col1:
 with col2:
     eur_ph = st.empty()
 
-if st.button("Converter simultaneamente (USD e EUR)"):
-    usd_ph.info("Aguardando USD para BRL...")
-    eur_ph.info("Aguardando EUR para BRL...")
+def safe_parse_decimal(val: str) -> str:
+    return val.strip()
+
+def format_converted(value):
+    if value is None:
+        return "null"
+    try:
+        dec = Decimal(str(value))
+        return f"{dec:,.2f}"
+    except (InvalidOperation, ValueError):
+        return str(value)
+
+def call_convert(url: str, amount: str, timeout: float = 10.0):
+    try:
+        resp = requests.get(url, params={"amount": amount}, timeout=timeout)
+    except requests.exceptions.RequestException as e:
+        return False, f"Request failed: {e}"
+
+    try:
+        resp.raise_for_status()
+    except requests.exceptions.HTTPError:
+        try:
+            j = resp.json()
+            msg = j.get("message") or j
+        except Exception:
+            msg = resp.text
+        return False, f"HTTP {resp.status_code}: {msg}"
+
+    try:
+        data = resp.json()
+    except ValueError:
+        return False, "Invalid JSON response"
+
+    return True, data
+
+if st.button("Converter (USD e EUR)"):
+    usd_ph.info("Chamando USD → BRL...")
+    eur_ph.info("Chamando EUR → BRL...")
+
     results = {}
 
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        futures = {
-            ex.submit(requests.get, f"{BASE_URL}/usd", {"amount": amount}): "usd",
-            ex.submit(requests.get, f"{BASE_URL}/eur", {"amount": amount}): "eur"
-        }
+    ok_usd, payload_usd = call_convert(USD_URL, amount, 10.0)
+    if not ok_usd:
+        usd_ph.error(f"Erro USD: {payload_usd}")
+        results["usd"] = {"error": payload_usd}
+    else:
+        results["usd"] = payload_usd
+        converted = payload_usd.get("converted") if isinstance(payload_usd, dict) else None
+        usd_ph.success(format_converted(converted))
 
-        for future in as_completed(futures):
-            key = futures[future]
-            try:
-                resp = future.result(timeout=15)
-                resp.raise_for_status()
-                data = resp.json()
-                results[key] = data
-
-                # pega SÓ O CONVERTED
-                converted = data.get("converted")
-
-                if key == "usd":
-                    usd_ph.success(f"{converted}")
-                else:
-                    eur_ph.success(f"{converted}")
-
-            except Exception as e:
-                if key == "usd":
-                    usd_ph.error(f"Erro USD: {e}")
-                else:
-                    eur_ph.error(f"Erro EUR: {e}")
-
-    st.markdown("Json retorno da API")
-    st.json(results)
+    ok_eur, payload_eur = call_convert(EUR_URL, amount, 10.0)
+    if not ok_eur:
+        eur_ph.error(f"Erro EUR: {payload_eur}")
+        results["eur"] = {"error": payload_eur}
+    else:
+        results["eur"] = payload_eur
+        converted = payload_eur.get("converted") if isinstance(payload_eur, dict) else None
+        eur_ph.success(format_converted(converted))

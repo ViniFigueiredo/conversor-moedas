@@ -1,25 +1,48 @@
-version: "3.8"
+version: "3.9"
+
 services:
-  api:
+  usd-service:
     build:
       context: ./api
       dockerfile: Docker/Dockerfile
-    container_name: conversor-api
+    image: conversor/usd:latest
+    container_name: conversor-usd
+    environment:
+      - SPRING_PROFILES_ACTIVE=usd
+      - SERVER_PORT=8081
     ports:
-      - "8080:8080"
+      - "8081:8081"
     networks:
       - app-net
 
+  eur-service:
+    build:
+      context: ./api
+      dockerfile: Docker/Dockerfile
+    image: conversor/eur:latest
+    container_name: conversor-eur
+    environment:
+      - SPRING_PROFILES_ACTIVE=eur
+      - SERVER_PORT=8082
+    ports:
+      - "8082:8082"
+    networks:
+      - app-net
 
   client:
     build:
       context: ./cliente
       dockerfile: Dockerfile
+    image: conversor/client:latest
     container_name: conversor-client
+    environment:
+      - USD_URL=http://usd-service:8081/convert/usd
+      - EUR_URL=http://eur-service:8082/convert/eur
+    depends_on:
+      - usd-service
+      - eur-service
     ports:
       - "8501:8501"
-    depends_on:
-      - api
     networks:
       - app-net
 

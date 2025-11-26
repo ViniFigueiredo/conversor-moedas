@@ -28,6 +28,13 @@ public class EURtoBRLConverter implements ConversorMoeda {
         Map<String,Object> resp = rest.getForObject(BASE_URL, Map.class);
         BigDecimal rate = extractBrlRate(resp);
         BigDecimal converted = rate == null || amount == null ? null : amount.multiply(rate);
+        //botando para dormir
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
         //ajustando o link da API
         return Map.of(
                 "from", "EUR",

@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -21,7 +22,6 @@ public class ConversionController {
         this.usdConverter = usdConverter;
         this.eurConverter = eurConverter;
     }
-
 
     @GetMapping("/both")
     public CompletableFuture<Map<String, Object>> convertBoth(@RequestParam String amount) {
