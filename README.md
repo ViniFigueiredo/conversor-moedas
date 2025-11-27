@@ -120,24 +120,6 @@ http://localhost:8080/convert/eur?amount=10
 }
 ```
 
-### Para `/convert/both?amount=10`
-
-```json
-{
-  "usd_to_brl": {
-    "from": "USD",
-    "to": "BRL",
-    "rate": 5.4,
-    "converted": 54.0
-  },
-  "eur_to_brl": {
-    "from": "EUR",
-    "to": "BRL",
-    "rate": 6.22,
-    "converted": 62.2
-  }
-}
-```
 
 ---
 
