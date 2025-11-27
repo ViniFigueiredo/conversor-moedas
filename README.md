@@ -67,12 +67,6 @@ As classes `USDtoBRLConverter` e `EURtoBRLConverter` possuem métodos assíncron
 
 O executor é configurado em `App.java`.
 
-### No Cliente (Python)
-
-Usa `ThreadPoolExecutor(max_workers=2)` para executar duas chamadas HTTP simultâneas.
-
----
-
 ## Fluxo Completo
 
 1. O usuário informa um valor no cliente Streamlit.
@@ -109,7 +103,6 @@ Exemplos de testes diretos:
 ```
 http://localhost:8080/convert/usd?amount=10
 http://localhost:8080/convert/eur?amount=10
-http://localhost:8080/convert/both?amount=10
 ```
 
 ---
@@ -155,7 +148,6 @@ http://localhost:8080/convert/both?amount=10
 * Python 3.11
 * Streamlit
 * CompletableFuture e @Async (Java)
-* ThreadPoolExecutor (Python)
 * Docker e Docker Compose
 * API externa ExchangeRate-API
 
