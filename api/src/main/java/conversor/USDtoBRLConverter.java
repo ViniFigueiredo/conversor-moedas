@@ -39,7 +39,6 @@ public class USDtoBRLConverter implements ConversorMoeda {
     @Override
     @Async("asyncExecutor")
     public CompletableFuture<Map<String, Object>> convertAsync(String from, String to, BigDecimal amount) {
-        // supplyAsync wraps the synchronous call into the executor to avoid blocking caller thread
         return CompletableFuture.supplyAsync(() -> convertSync(from, to, amount), executor);
     }
 

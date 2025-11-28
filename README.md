@@ -1,4 +1,4 @@
-# Conversor de Moedas Distribuído — Spring Boot + Streamlit
+# Conversor de Moedas Distribuído com threads concorrentes — Spring Boot + Streamlit
 
 Este projeto demonstra um sistema distribuído para conversão de moedas utilizando múltiplos serviços independentes:
 
@@ -15,33 +15,45 @@ O objetivo é mostrar como o cliente consulta **dois serviços distintos** e exi
 ```mermaid
 sequenceDiagram
     autonumber
-
-    participant U as Usuário
+    participant U as Usuário (browser)
     participant C as Cliente (Streamlit)
-    participant USD as usd-service (Spring Boot)
-    participant EUR as eur-service (Spring Boot)
+    participant Pool as ThreadPoolExecutor (client)
+    participant USD_C as usd-service (Spring Boot)
+    participant EUR_C as eur-service (Spring Boot)
+    participant ExecUSD as conversionExecutor (usd-service)
+    participant ExecEUR as conversionExecutor (eur-service)
     participant API_USD as ExchangeRate-API (latest/USD)
     participant API_EUR as ExchangeRate-API (latest/EUR)
 
-    U->>C: Informa amount
+    U->>C: Digita amount e clica "Converter"
+    C->>C: Valida input
+    C->>Pool: Dispara 2 workers (USD, EUR) em paralelo
+    Note right of Pool: Cada worker executa call_once -> requests.get
 
-    C->>C: Formata e valida o valor
+    par Worker USD
+        Pool->>USD_C: HTTP GET /convert/usd?amount=X
+        USD_C->>ExecUSD: submit tarefa de conversão (supplyAsync / executor)
+        ExecUSD->>API_USD: Consulta taxa USD (pode ser HTTP)
+        API_USD-->>ExecUSD: Retorna rate USD→BRL
+        ExecUSD-->>USD_C: Resultado calculado (rate, converted)
+        USD_C-->>Pool: Resposta JSON (via CompletableFuture completion)
+    end
 
-    Note over C,USD: Chamada 1 — USD → BRL
-    C->>USD: GET /convert/usd?amount=X
-    USD->>API_USD: Consulta taxa USD
-    API_USD-->>USD: Retorna rate USD→BRL
-    USD-->>C: Envia resultado USD
-    C->>C: Exibe resultado USD
+    par Worker EUR
+        Pool->>EUR_C: HTTP GET /convert/eur?amount=X
+        EUR_C->>ExecEUR: submit tarefa de conversão (supplyAsync / executor)
+        ExecEUR->>API_EUR: Consulta taxa EUR (pode ser HTTP)
+        API_EUR-->>ExecEUR: Retorna rate EUR→BRL
+        ExecEUR-->>EUR_C: Resultado calculado (rate, converted)
+        EUR_C-->>Pool: Resposta JSON (via CompletableFuture completion)
+    end
 
-    Note over C,EUR: Chamada 2 — EUR → BRL
-    C->>EUR: GET /convert/eur?amount=X
-    EUR->>API_EUR: Consulta taxa EUR
-    API_EUR-->>EUR: Retorna rate EUR→BRL
-    EUR-->>C: Envia resultado EUR
-    C->>C: Exibe resultado EUR
+    Pool-->>C: Resultado USD (quando disponível) / ou erro (após timeout)
+    C->>C: Atualiza placeholder USD (sucesso/erro)
+    Pool-->>C: Resultado EUR (quando disponível) / ou erro (após timeout)
+    C->>C: Atualiza placeholder EUR (sucesso/erro)
 
-    C-->>U: Mostra ambos os resultados na tela
+    C-->>U: Mostra resultados parciais/imediatos na interface Streamlit
 ```
 
 
@@ -109,14 +121,11 @@ Exemplo de resposta:
 Cada serviço:
 
 * Consulta sua própria fonte de taxas:
-
   * `latest/USD`
   * `latest/EUR`
 * Executa a lógica de conversão
 * Retorna o valor já convertido
 * Pode usar `@Async` + `CompletableFuture` internamente (dependendo da implementação)
-  mas isso é interno ao serviço, o cliente não utiliza threads.
-
 ---
 
 ## Cliente (Streamlit)
@@ -125,7 +134,7 @@ O arquivo `cliente/app.py`:
 
 * Recebe o valor digitado pelo usuário
 * Formata e valida o input
-* Faz duas requisições HTTP separadas, uma para cada serviço:
+* Lança duas requisições HTTP., de forma concorrente, uma para cada, uma para cada serviço:
 
   * `USD_URL` (usd-service)
   * `EUR_URL` (eur-service)
@@ -139,18 +148,40 @@ USD_URL = "http://usd-service:8081/convert/usd"
 EUR_URL = "http://eur-service:8082/convert/eur"
 ```
 
-As requisições são feitas com `requests.get()`, sem uso de threads, pools ou concorrência explícita. Cada chamada é independente.
+As requisições são feitas com uso de threads concorrentes.
+```python
+with ThreadPoolExecutor(max_workers=2) as executor:
+        futuro_dict = {
+            executor.submit(worker, "USD", USD_URL, amount): "USD",
+            executor.submit(worker, "EUR", EUR_URL, amount): "EUR",
+        }
+
+        for futuro in as_completed(futuro_dict):
+            nome_esperado = futuro_dict[futuro]
+            try:
+                nome_servico, ok, carga = futuro.result()
+            except Exception as exc:
+                ph = usd_ph if nome_esperado == "USD" else eur_ph
+                ph.error(f"{nome_esperado} — erro inesperado: {exc}")
+                continue
+
+            ph = usd_ph if nome_servico == "USD" else eur_ph
+
+            if not ok:
+                ph.error(f"Erro {nome_servico}: {carga}")
+            else:
+                convertido = carga.get("converted") if isinstance(carga, dict) else None
+                ph.success(format_converted(convertido))
+```
 
 ---
 
 ## Fluxo Completo
 
 1. O usuário digita um valor no Streamlit.
-2. O cliente chama primeiro o serviço USD.
-3. Exibe o resultado USD (ou erro).
-4. O cliente chama o serviço EUR.
-5. Exibe o resultado EUR (ou erro).
-6. Cada serviço retorna seu cálculo de forma isolada.
+2. O cliente chama os dois workers de forma paralela
+3. Exibe o resultado (ou erro) do que conseguir chegar primeiro de forma a não bloquear o cliente.
+4. Cada serviço retorna seu cálculo de forma isolada.
 
 ---
 
